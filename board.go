@@ -1,64 +1,20 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 )
 
-type Cells [][]bool
-
-func NewCells(width, height int) Cells {
-	var cells Cells = make([][]bool, height)
-	for i := 0; i < height; i++ {
-		cells[i] = make([]bool, width)
-	}
-	return cells
-}
-
 type Board struct {
-	cells      Cells
-	width      int
-	height     int
+	*Cells
 	generation int
 }
 
 func NewBoard(width, height int) *Board {
-	return &Board{
-		cells:      NewCells(width, height),
-		width:      width,
-		height:     height,
-		generation: 0,
-	}
-}
-
-func (b *Board) Width() int {
-	return b.width
-}
-
-func (b *Board) Height() int {
-	return b.height
+	return &Board{NewCells(width, height), 0}
 }
 
 func (b *Board) Generation() int {
 	return b.generation
-}
-
-func (b *Board) checkRange(x, y int) bool {
-	if x < 0 || x >= b.width || y < 0 || y >= b.height {
-		return false
-	}
-	return true
-}
-
-func (b *Board) Set(x, y int, c bool) {
-	b.cells[y][x] = c
-}
-
-func (b *Board) Get(x, y int) bool {
-	if !b.checkRange(x, y) {
-		panic(fmt.Sprint(x, b.width, y, b.height))
-	}
-	return b.cells[y][x]
 }
 
 func (b *Board) Toggle(x, y int) {
@@ -74,7 +30,7 @@ func (b *Board) Around(x, y int) int {
 			}
 			nx := x + dx
 			ny := y + dy
-			if !b.checkRange(nx, ny) {
+			if !b.CheckRange(nx, ny) {
 				continue
 			}
 			if b.Get(nx, ny) {
@@ -91,15 +47,15 @@ func (b *Board) Next() {
 		for x := 0; x < b.width; x++ {
 			switch b.Around(x, y) {
 			case 2:
-				next[y][x] = b.cells[y][x]
+				next.cells[y][x] = b.cells[y][x]
 			case 3:
-				next[y][x] = true
+				next.cells[y][x] = true
 			default:
-				next[y][x] = false
+				next.cells[y][x] = false
 			}
 		}
 	}
-	b.cells = next
+	b.cells = next.cells
 	b.generation++
 }
 
@@ -120,4 +76,19 @@ func (b *Board) Clear() {
 		}
 	}
 	b.generation = 0
+}
+
+func (b *Board) SetPattern(x, y int, p *Pattern) {
+	for y2 := 0; y2 < p.Height(); y2++ {
+		for x2 := 0; x2 < p.Width(); x2++ {
+			if !b.CheckRange(x+x2, y+y2) {
+				// panic(fmt.Sprint(x+x2, y+y2))
+				continue
+			}
+			if !p.Get(x2, y2) {
+				continue
+			}
+			b.Set(x+x2, y+y2, true)
+		}
+	}
 }

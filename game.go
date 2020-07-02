@@ -21,23 +21,43 @@ type cursor struct {
 }
 
 type Game struct {
-	screen  tcell.Screen
-	board   *Board
-	running bool
-	mu      sync.Mutex
-	cursor  cursor
+	screen     tcell.Screen
+	board      *Board
+	running    bool
+	mu         sync.Mutex
+	cursor     cursor
+	pattern    *Pattern
+	patterns   []*Pattern
+	patternIdx int
 }
 
-func NewGame(s tcell.Screen) *Game {
+var (
+	cellPattern = &Pattern{
+		Cells: &Cells{
+			cells:  [][]bool{{true}},
+			width:  1,
+			height: 1,
+		},
+		name:    "cell",
+		comment: []string{},
+		credit:  "",
+	}
+)
+
+func NewGame(s tcell.Screen, patterns []*Pattern) *Game {
 	w, h := s.Size()
 	w /= 2
 	b := NewBoard(w, h)
+	patterns = append([]*Pattern{cellPattern}, patterns...)
 	return &Game{
-		screen:  s,
-		board:   b,
-		running: false,
-		mu:      sync.Mutex{},
-		cursor:  cursor{},
+		screen:     s,
+		board:      b,
+		running:    false,
+		mu:         sync.Mutex{},
+		cursor:     cursor{},
+		pattern:    cellPattern,
+		patterns:   patterns,
+		patternIdx: 0,
 	}
 }
 
@@ -46,13 +66,15 @@ func (g *Game) display() {
 
 	g.displayBoard()
 
-	g.displayCursor()
+	g.displayPattern()
 
-	g.displayString(0, g.board.Height()-6, "s: start/stop")
-	g.displayString(0, g.board.Height()-5, "n: next")
-	g.displayString(0, g.board.Height()-4, "r: random")
-	g.displayString(0, g.board.Height()-3, "space: toggle")
+	g.displayString(0, g.board.Height()-7, "s: start/stop")
+	g.displayString(0, g.board.Height()-6, "n: next")
+	g.displayString(0, g.board.Height()-5, "r: random")
+	g.displayString(0, g.board.Height()-4, "space: set")
+	g.displayString(0, g.board.Height()-3, fmt.Sprintf("p: pattern [%s]", g.pattern.name))
 	g.displayString(0, g.board.Height()-2, fmt.Sprintf("generation: %d", g.board.Generation()))
+	g.displayString(0, g.board.Height()-2, fmt.Sprintf("cursor: [%d, %d]", g.cursor.x, g.cursor.y))
 	g.displayString(0, g.board.Height()-1, "q: quit")
 
 	g.screen.Show()
@@ -72,8 +94,11 @@ func (g *Game) displayBoard() {
 	}
 }
 
-func (g *Game) displayCursor() {
-	x, y := g.cursor.x, g.cursor.y
+func (g *Game) displayCursor(x, y int) {
+	if !g.board.CheckRange(x, y) {
+		return
+	}
+	// x, y := g.cursor.x, g.cursor.y
 	bg := cursorDeadColor
 	if g.board.Get(x, y) {
 		bg = cursorAliveColor
@@ -81,6 +106,17 @@ func (g *Game) displayCursor() {
 	style := tcell.StyleDefault.Background(bg)
 	g.screen.SetContent(x*2, y, ' ', nil, style)
 	g.screen.SetContent(x*2+1, y, ' ', nil, style)
+}
+
+func (g *Game) displayPattern() {
+	for y := 0; y < g.pattern.Height(); y++ {
+		for x := 0; x < g.pattern.Width(); x++ {
+			if !g.pattern.Get(x, y) {
+				continue
+			}
+			g.displayCursor(g.cursor.x+x, g.cursor.y+y)
+		}
+	}
 }
 
 func (g *Game) displayString(x, y int, str string) {
@@ -138,9 +174,13 @@ func (g *Game) Loop() {
 				g.board.Next()
 				g.mu.Unlock()
 				g.display()
+			case ev.Rune() == 'p':
+				g.patternIdx = (g.patternIdx + 1) % len(g.patterns)
+				g.pattern = g.patterns[g.patternIdx]
+				g.display()
 			case ev.Rune() == ' ':
 				g.mu.Lock()
-				g.board.Toggle(g.cursor.x, g.cursor.y)
+				g.board.SetPattern(g.cursor.x, g.cursor.y, g.pattern)
 				g.mu.Unlock()
 				g.display()
 			case ev.Key() == tcell.KeyRight, ev.Rune() == 'l':
@@ -174,7 +214,7 @@ func (g *Game) Loop() {
 			// urxvt上だと何かおかしい？
 			x, y := ev.Position()
 			x /= 2
-			if !g.board.checkRange(x, y) {
+			if !g.board.CheckRange(x, y) {
 				continue
 			}
 			g.cursor.x, g.cursor.y = x, y
@@ -182,12 +222,12 @@ func (g *Game) Loop() {
 				g.display()
 				continue
 			}
-			cell := false
-			if ev.Buttons()&tcell.Button1 != 0 {
-				cell = true
-			}
 			g.mu.Lock()
-			g.board.Set(x, y, cell)
+			if ev.Buttons()&tcell.Button1 != 0 {
+				g.board.SetPattern(x, y, g.pattern)
+			} else {
+				g.board.Set(x, y, false)
+			}
 			g.mu.Unlock()
 			g.display()
 		}
