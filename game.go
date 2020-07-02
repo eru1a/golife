@@ -29,6 +29,7 @@ type Game struct {
 	pattern    *Pattern
 	patterns   []*Pattern
 	patternIdx int
+	speed      int
 }
 
 var (
@@ -58,6 +59,7 @@ func NewGame(s tcell.Screen, patterns []*Pattern) *Game {
 		pattern:    cellPattern,
 		patterns:   patterns,
 		patternIdx: 0,
+		speed:      100,
 	}
 }
 
@@ -68,11 +70,12 @@ func (g *Game) display() {
 
 	g.displayPattern()
 
-	g.displayString(0, g.board.Height()-8, "s: start/stop")
-	g.displayString(0, g.board.Height()-7, "n: next")
-	g.displayString(0, g.board.Height()-6, "r: random")
-	g.displayString(0, g.board.Height()-5, "space: set")
-	g.displayString(0, g.board.Height()-4, fmt.Sprintf("p: pattern [%s]", g.pattern.name))
+	g.displayString(0, g.board.Height()-9, "s: start/stop")
+	g.displayString(0, g.board.Height()-8, "n: next")
+	g.displayString(0, g.board.Height()-7, "r: random")
+	g.displayString(0, g.board.Height()-6, "space: set")
+	g.displayString(0, g.board.Height()-5, fmt.Sprintf("p: pattern [%s]", g.pattern.name))
+	g.displayString(0, g.board.Height()-4, fmt.Sprintf("wheel: speed [%d]", g.speed))
 	g.displayString(0, g.board.Height()-3, fmt.Sprintf("cursor: [%d, %d]", g.cursor.x, g.cursor.y))
 	g.displayString(0, g.board.Height()-2, fmt.Sprintf("generation: %d", g.board.Generation()))
 	g.displayString(0, g.board.Height()-1, "q: quit")
@@ -165,7 +168,7 @@ func (g *Game) random() {
 func (g *Game) Loop() {
 	go func() {
 		for {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(time.Duration(g.speed) * time.Millisecond)
 			if g.running {
 				g.next()
 				g.display()
@@ -227,6 +230,19 @@ func (g *Game) Loop() {
 			}
 		case *tcell.EventMouse:
 			// urxvt上だと何かおかしい？
+			if ev.Buttons()&tcell.WheelUp != 0 {
+				g.speed -= 10
+				if g.speed <= 0 {
+					g.speed = 10
+				}
+				g.display()
+				continue
+			}
+			if ev.Buttons()&tcell.WheelDown != 0 {
+				g.speed += 10
+				g.display()
+				continue
+			}
 			x, y := ev.Position()
 			x /= 2
 			if !g.board.CheckRange(x, y) {
