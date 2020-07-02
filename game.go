@@ -68,13 +68,13 @@ func (g *Game) display() {
 
 	g.displayPattern()
 
-	g.displayString(0, g.board.Height()-7, "s: start/stop")
-	g.displayString(0, g.board.Height()-6, "n: next")
-	g.displayString(0, g.board.Height()-5, "r: random")
-	g.displayString(0, g.board.Height()-4, "space: set")
-	g.displayString(0, g.board.Height()-3, fmt.Sprintf("p: pattern [%s]", g.pattern.name))
+	g.displayString(0, g.board.Height()-8, "s: start/stop")
+	g.displayString(0, g.board.Height()-7, "n: next")
+	g.displayString(0, g.board.Height()-6, "r: random")
+	g.displayString(0, g.board.Height()-5, "space: set")
+	g.displayString(0, g.board.Height()-4, fmt.Sprintf("p: pattern [%s]", g.pattern.name))
+	g.displayString(0, g.board.Height()-3, fmt.Sprintf("cursor: [%d, %d]", g.cursor.x, g.cursor.y))
 	g.displayString(0, g.board.Height()-2, fmt.Sprintf("generation: %d", g.board.Generation()))
-	g.displayString(0, g.board.Height()-2, fmt.Sprintf("cursor: [%d, %d]", g.cursor.x, g.cursor.y))
 	g.displayString(0, g.board.Height()-1, "q: quit")
 
 	g.screen.Show()
@@ -98,7 +98,6 @@ func (g *Game) displayCursor(x, y int) {
 	if !g.board.CheckRange(x, y) {
 		return
 	}
-	// x, y := g.cursor.x, g.cursor.y
 	bg := cursorDeadColor
 	if g.board.Get(x, y) {
 		bg = cursorAliveColor
@@ -114,7 +113,7 @@ func (g *Game) displayPattern() {
 			if !g.pattern.Get(x, y) {
 				continue
 			}
-			g.displayCursor(g.cursor.x+x, g.cursor.y+y)
+			g.displayCursor(g.cursor.x+x-g.pattern.Width()/2, g.cursor.y+y-g.pattern.Height()/2)
 		}
 	}
 }
@@ -139,14 +138,36 @@ func (g *Game) displayString(x, y int, str string) {
 	}
 }
 
+func (g *Game) set(c bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.board.Set(g.cursor.x, g.cursor.y, c)
+}
+
+func (g *Game) setPattern() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.board.SetPattern(g.cursor.x-g.pattern.Width()/2, g.cursor.y-g.pattern.Height()/2, g.pattern)
+}
+
+func (g *Game) next() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.board.Next()
+}
+
+func (g *Game) random() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.board.Random()
+}
+
 func (g *Game) Loop() {
 	go func() {
 		for {
 			time.Sleep(100 * time.Millisecond)
 			if g.running {
-				g.mu.Lock()
-				g.board.Next()
-				g.mu.Unlock()
+				g.next()
 				g.display()
 			}
 		}
@@ -165,23 +186,17 @@ func (g *Game) Loop() {
 				g.running = false
 				g.display()
 			case ev.Rune() == 'r':
-				g.mu.Lock()
-				g.board.Random()
-				g.mu.Unlock()
+				g.random()
 				g.display()
 			case ev.Rune() == 'n':
-				g.mu.Lock()
-				g.board.Next()
-				g.mu.Unlock()
+				g.next()
 				g.display()
 			case ev.Rune() == 'p':
 				g.patternIdx = (g.patternIdx + 1) % len(g.patterns)
 				g.pattern = g.patterns[g.patternIdx]
 				g.display()
 			case ev.Rune() == ' ':
-				g.mu.Lock()
-				g.board.SetPattern(g.cursor.x, g.cursor.y, g.pattern)
-				g.mu.Unlock()
+				g.setPattern()
 				g.display()
 			case ev.Key() == tcell.KeyRight, ev.Rune() == 'l':
 				g.cursor.x++
@@ -222,13 +237,11 @@ func (g *Game) Loop() {
 				g.display()
 				continue
 			}
-			g.mu.Lock()
 			if ev.Buttons()&tcell.Button1 != 0 {
-				g.board.SetPattern(x, y, g.pattern)
+				g.setPattern()
 			} else {
-				g.board.Set(x, y, false)
+				g.set(false)
 			}
-			g.mu.Unlock()
 			g.display()
 		}
 	}
